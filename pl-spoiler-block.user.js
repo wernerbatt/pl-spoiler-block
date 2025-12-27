@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -243,7 +243,44 @@
         });
 
         // -------------------------------------------------------------
-        // 5️⃣  Playlist Panel Videos (Right Side Panel)
+        // 5️⃣  Video Wall Suggestions (Suggested Videos Overlay)
+        // -------------------------------------------------------------
+        const videowallStills = document.querySelectorAll('.ytp-videowall-still, .ytp-modern-videowall-still');
+        videowallStills.forEach(still => {
+            if (still.dataset.blackoutProcessed) return;
+
+            const href = still.getAttribute('href');
+            if (!href) return;
+
+            // Extract video ID
+            const vMatch = href.match(/[?&]v=([^&]+)/);
+            if (!vMatch) return;
+            const videoId = vMatch[1];
+
+            if (blockedVideoIds.has(videoId)) {
+                // Black out the image
+                const image = still.querySelector('img, .ytp-videowall-still-image');
+                if (image) {
+                    image.style.filter = 'brightness(0)';
+                    image.style.backgroundColor = 'black';
+                }
+
+                // Rewrite the title
+                const titleEl = still.querySelector('.ytp-videowall-still-info-title');
+                if (titleEl) {
+                    const newTitle = getRewrittenTitle(titleEl.textContent.trim());
+                    if (newTitle) {
+                        titleEl.textContent = newTitle;
+                    }
+                }
+
+                still.dataset.blackoutProcessed = 'true';
+                console.log('[Blackout] Blacked out video wall suggestion');
+            }
+        });
+
+        // -------------------------------------------------------------
+        // 6️⃣  Playlist Panel Videos (Right Side Panel)
         // -------------------------------------------------------------
         const playlistPanelVideos = document.querySelectorAll('ytd-playlist-panel-video-renderer');
         playlistPanelVideos.forEach(video => {
@@ -291,7 +328,7 @@
         });
 
         // -------------------------------------------------------------
-        // 6️⃣  Watch Page Title & Tab Title
+        // 7️⃣  Watch Page Title & Tab Title
         // -------------------------------------------------------------
         const currentVideoIdMatch = window.location.href.match(/[?&]v=([^&]+)/);
         if (currentVideoIdMatch && blockedVideoIds.has(currentVideoIdMatch[1])) {
