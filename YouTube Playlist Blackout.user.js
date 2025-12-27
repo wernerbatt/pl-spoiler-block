@@ -7,8 +7,8 @@
 // @match        https://www.youtube.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=youtube.com
 // @grant        none
-// @updateURL    https://raw.githubusercontent.com/YOUR_USERNAME/pl-spoiler-block/main/YouTube%20Playlist%20Blackout.user.js
-// @downloadURL  https://raw.githubusercontent.com/YOUR_USERNAME/pl-spoiler-block/main/YouTube%20Playlist%20Blackout.user.js
+// @updateURL    https://raw.githubusercontent.com/wernerbatt/pl-spoiler-block/main/YouTube%20Playlist%20Blackout.user.js
+// @downloadURL  https://raw.githubusercontent.com/wernerbatt/pl-spoiler-block/main/YouTube%20Playlist%20Blackout.user.js
 // ==/UserScript==
 
 (function () {
