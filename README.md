@@ -26,7 +26,7 @@ Install [Tampermonkey](https://www.tampermonkey.net/) extension for your browser
 
 ### Install from GitHub (Recommended)
 
-1. Click this link to install: [YouTube Playlist Blackout.user.js](https://raw.githubusercontent.com/wernerbatt/pl-spoiler-block/main/YouTube%20Playlist%20Blackout.user.js)
+1. Click this link to install: [pl-spoiler-block.user.js](https://raw.githubusercontent.com/wernerbatt/pl-spoiler-block/main/pl-spoiler-block.user.js)
 2. Tampermonkey will open and show the installation page
 3. Click "Install"
 
@@ -34,7 +34,7 @@ The script will automatically check for updates from GitHub.
 
 ### Manual Installation
 
-1. Download `YouTube Playlist Blackout.user.js`
+1. Download `pl-spoiler-block.user.js`
 2. Open Tampermonkey dashboard
 3. Click the "+" tab to create a new script
 4. Paste the script content
