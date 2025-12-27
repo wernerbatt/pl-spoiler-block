@@ -5,12 +5,15 @@ A Tampermonkey userscript that blacks out video thumbnails from a specific YouTu
 ## Features
 
 - **Thumbnail Blackout**: Completely blacks out thumbnails of videos from a specified playlist
-- **Spoiler Protection**: Rewrites video titles to hide scores (e.g., "| Team A 1-0 Team B |" becomes "Team A vs Team B")
-- **Comprehensive Coverage**: Works across:
+- **Spoiler Protection**: Rewrites video titles to hide scores (e.g., "Chelsea 1-2 Aston Villa" becomes "Chelsea vs Aston Villa")
+- **Comprehensive Coverage**: Works across ALL YouTube locations:
   - YouTube home page
   - Search results
-  - Playlist pages
+  - Playlist pages and headers
   - Suggested videos sidebar
+  - End screen cards (video player overlays)
+  - Video wall suggestions (suggested videos on player)
+  - Playlist panel (right side when watching from playlist)
   - Watch page titles
   - Browser tab titles
 - **Dynamic Updates**: Handles YouTube's infinite scroll and SPA navigation automatically
@@ -46,7 +49,7 @@ By default, the script is configured for a specific playlist. To customize:
 
 1. Open Tampermonkey dashboard
 2. Click the edit icon next to "YouTube Playlist Blackout"
-3. Find line 15: `const PLAYLIST_ID = 'PLISuFiQTdKDWLIeau9w3aVwtiFsKwarBe';`
+3. Find line 17: `const PLAYLIST_ID = 'PLISuFiQTdKDWLIeau9w3aVwtiFsKwarBe';`
 4. Replace the playlist ID with your desired playlist
    - You can find the playlist ID in the URL: `youtube.com/playlist?list=YOUR_PLAYLIST_ID`
 5. Save the script (Ctrl+S)
@@ -63,17 +66,24 @@ By default, the script is configured for a specific playlist. To customize:
 
 ## Title Rewriting
 
-The script specifically looks for titles in this format:
+The script automatically detects and rewrites titles containing scores. It supports multiple formats:
+
+**Format 1** (with pipes):
 ```
 | Team A 1-0 Team B |
 ```
 
-And rewrites them to:
+**Format 2** (description with score):
+```
+Description text | Team A 1-0 Team B | Suffix
+```
+
+Both are rewritten to:
 ```
 Team A vs Team B
 ```
 
-This prevents seeing the final score while browsing YouTube.
+The script splits titles by the `|` character and looks for segments matching the pattern `Team A [score] Team B`, then removes the score to prevent spoilers.
 
 ## Troubleshooting
 
@@ -83,8 +93,9 @@ This prevents seeing the final score while browsing YouTube.
 - Verify Tampermonkey is enabled for YouTube
 
 ### Titles still show scores
-- The script expects titles in the format `| Team A 1-0 Team B |`
-- If your titles use a different format, you may need to adjust the regex pattern in the `getRewrittenTitle()` function
+- The script looks for titles with pipe-separated segments containing `Team A [score] Team B` patterns
+- The score must be in format `X-Y` (e.g., "1-0", "3-2")
+- If your titles use a completely different format, you may need to adjust the logic in the `getRewrittenTitle()` function
 
 ### Script not updating automatically
 - Verify the `@updateURL` and `@downloadURL` in the script header point to your GitHub repository
