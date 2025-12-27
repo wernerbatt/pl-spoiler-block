@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -194,7 +194,30 @@
         });
 
         // -------------------------------------------------------------
-        // 4️⃣  Watch Page Title & Tab Title
+        // 4️⃣  YouTube End Screen Cards (Info Cards/Playlist Cards)
+        // -------------------------------------------------------------
+        const endScreenCards = document.querySelectorAll('.ytp-ce-playlist, .ytp-ce-video');
+        endScreenCards.forEach(card => {
+            if (card.dataset.blackoutProcessed) return;
+
+            const link = card.querySelector('a');
+            if (!link) return;
+
+            const href = link.getAttribute('href');
+            if (href && href.includes(PLAYLIST_ID)) {
+                // Black out the covering image (thumbnail)
+                const coveringImage = card.querySelector('.ytp-ce-covering-image');
+                if (coveringImage) {
+                    coveringImage.style.filter = 'brightness(0)';
+                    coveringImage.style.backgroundColor = 'black';
+                }
+                card.dataset.blackoutProcessed = 'true';
+                console.log('[Blackout] Blacked out end screen card');
+            }
+        });
+
+        // -------------------------------------------------------------
+        // 5️⃣  Watch Page Title & Tab Title
         // -------------------------------------------------------------
         const currentVideoIdMatch = window.location.href.match(/[?&]v=([^&]+)/);
         if (currentVideoIdMatch && blockedVideoIds.has(currentVideoIdMatch[1])) {
