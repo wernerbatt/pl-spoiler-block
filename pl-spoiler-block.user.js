@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -49,13 +49,21 @@
     // Helper: Rewrite title text (removes scores)
     // ---------------------------------------------------------------------
     function getRewrittenTitle(originalTitle) {
-        // Expected format: "| Team A 1-0 Team B |" (pipe‑delimited)
-        const match = originalTitle.match(/\|\s*(.*?)\s+\d+-\d+\s+(.*?)\s+\|/);
-        if (match) {
-            const teamA = match[1].trim();
-            const teamB = match[2].trim();
-            return `${teamA} vs ${teamB}`;
+        // Split by pipes to get segments
+        const parts = originalTitle.split('|');
+
+        // Look for the segment containing the score (Team A score Team B)
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i].trim();
+            // Match: "Team A 1-2 Team B" format
+            const match = part.match(/^(.+) ([0-9]+-[0-9]+) (.+)$/);
+            if (match) {
+                const teamA = match[1].trim();
+                const teamB = match[3].trim();
+                return `${teamA} vs ${teamB}`;
+            }
         }
+
         return null;
     }
 
@@ -73,6 +81,9 @@
             if (link.dataset.blackoutProcessed) return;
             const href = link.getAttribute('href');
             if (!href) return;
+
+            // Skip wc-endpoint wrapper links (playlist panel)
+            if (link.id === 'wc-endpoint') return;
 
             // Check if this is a thumbnail link (contains image or has specific class/id)
             // We do NOT want to blackout text links like #video-title
@@ -217,7 +228,55 @@
         });
 
         // -------------------------------------------------------------
-        // 5️⃣  Watch Page Title & Tab Title
+        // 5️⃣  Playlist Panel Videos (Right Side Panel)
+        // -------------------------------------------------------------
+        const playlistPanelVideos = document.querySelectorAll('ytd-playlist-panel-video-renderer');
+        playlistPanelVideos.forEach(video => {
+            const wcEndpoint = video.querySelector('a#wc-endpoint');
+            if (!wcEndpoint) return;
+
+            const href = wcEndpoint.getAttribute('href');
+            if (!href || !href.includes(PLAYLIST_ID)) return;
+
+            // Extract video ID
+            const vMatch = href.match(/[?&]v=([^&]+)/);
+            if (!vMatch) return;
+            const videoId = vMatch[1];
+
+            if (blockedVideoIds.has(videoId)) {
+                // Black out only the thumbnail, not the wrapper
+                const thumbnail = video.querySelector('a#thumbnail');
+                if (thumbnail && !thumbnail.dataset.blackoutProcessed) {
+                    thumbnail.style.filter = 'brightness(0)';
+                    thumbnail.style.backgroundColor = 'black';
+                    thumbnail.dataset.blackoutProcessed = 'true';
+                }
+
+                // Rewrite the title
+                const titleEl = video.querySelector('#video-title');
+                if (titleEl && !titleEl.dataset.titleProcessed) {
+                    const newTitle = getRewrittenTitle(titleEl.textContent.trim());
+                    if (newTitle) {
+                        titleEl.textContent = newTitle;
+                        if (titleEl.hasAttribute('title')) {
+                            titleEl.setAttribute('title', newTitle);
+                        }
+                        if (titleEl.hasAttribute('aria-label')) {
+                            const ariaLabel = titleEl.getAttribute('aria-label');
+                            const newAriaLabel = getRewrittenTitle(ariaLabel);
+                            if (newAriaLabel) {
+                                titleEl.setAttribute('aria-label', newAriaLabel);
+                            }
+                        }
+                        titleEl.dataset.titleProcessed = 'true';
+                        console.log(`[Blackout] Rewrote playlist panel title: "${newTitle}"`);
+                    }
+                }
+            }
+        });
+
+        // -------------------------------------------------------------
+        // 6️⃣  Watch Page Title & Tab Title
         // -------------------------------------------------------------
         const currentVideoIdMatch = window.location.href.match(/[?&]v=([^&]+)/);
         if (currentVideoIdMatch && blockedVideoIds.has(currentVideoIdMatch[1])) {
