@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.6
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -16,6 +16,8 @@
 
     const PLAYLIST_ID = 'PLISuFiQTdKDWLIeau9w3aVwtiFsKwarBe';
     const blockedVideoIds = new Set();
+    let blockedChannelId = null;
+    let blockedChannelHandle = null;
     let isFetching = false;
 
     // ---------------------------------------------------------------------
@@ -28,13 +30,33 @@
         try {
             const response = await fetch(`https://www.youtube.com/playlist?list=${PLAYLIST_ID}`);
             const text = await response.text();
+
+            // Extract channel ID and handle
+            const channelIdMatch = text.match(/"channelId":"([^"]+)"/);
+            if (channelIdMatch) {
+                blockedChannelId = channelIdMatch[1];
+                console.log(`[Blackout] Found channel ID: ${blockedChannelId}`);
+            }
+
+            const channelHandleMatch = text.match(/"ownerBadges"[\s\S]*?"canonicalBaseUrl":"\/(@[^"]+)"/);
+            if (channelHandleMatch) {
+                blockedChannelHandle = channelHandleMatch[1];
+                console.log(`[Blackout] Found channel handle: ${blockedChannelHandle}`);
+            }
+
+            // Extract video IDs
             const regex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
             let match;
             while ((match = regex.exec(text)) !== null) {
                 blockedVideoIds.add(match[1]);
             }
             console.log(`[Blackout] Loaded ${blockedVideoIds.size} unique video IDs to block.`);
+
+            // Process immediately to catch any elements already on the page
             processThumbnails();
+
+            // Single retry to catch elements that loaded during the fetch
+            setTimeout(processThumbnails, 500);
         } catch (e) {
             console.error('[Blackout] Error fetching playlist:', e);
         } finally {
@@ -45,6 +67,32 @@
     // ---------------------------------------------------------------------
     // Apply blackout styling and title rewriting to thumbnails.
     // ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // Helper: Check if element belongs to blocked channel
+    // ---------------------------------------------------------------------
+    function isBlockedChannel(element) {
+        if (!blockedChannelId && !blockedChannelHandle) return false;
+
+        // Look for channel links in the element
+        const channelLinks = element.querySelectorAll('a[href*="/channel/"], a[href*="/@"]');
+        for (const link of channelLinks) {
+            const href = link.getAttribute('href');
+            if (!href) continue;
+
+            // Check channel ID
+            if (blockedChannelId && href.includes(`/channel/${blockedChannelId}`)) {
+                return true;
+            }
+
+            // Check channel handle
+            if (blockedChannelHandle && href.includes(blockedChannelHandle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // ---------------------------------------------------------------------
     // Helper: Rewrite title text (removes scores)
     // ---------------------------------------------------------------------
@@ -71,7 +119,8 @@
     // Apply blackout styling and title rewriting to thumbnails.
     // ---------------------------------------------------------------------
     function processThumbnails() {
-        if (blockedVideoIds.size === 0) return;
+        // Only skip if we have no channel info AND no video IDs
+        if (blockedVideoIds.size === 0 && !blockedChannelId && !blockedChannelHandle) return;
 
         // -------------------------------------------------------------
         // 1️⃣  Standard Video Links (Home, Search, Playlist)
@@ -106,7 +155,11 @@
                 if (shortsMatch) videoId = shortsMatch[1];
             }
 
-            if (videoId && blockedVideoIds.has(videoId)) {
+            // Check if this video should be blocked (by ID or by channel)
+            const container = link.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-playlist-video-renderer, ytd-compact-video-renderer');
+            const shouldBlock = (videoId && blockedVideoIds.has(videoId)) || (container && isBlockedChannel(container));
+
+            if (shouldBlock) {
                 // Blackout the thumbnail container
                 link.style.filter = 'brightness(0)';
                 link.style.backgroundColor = 'black';
@@ -114,10 +167,9 @@
                 const overlayElements = link.querySelectorAll('.ytThumbnailHoverOverlayViewModelScrim, .ytThumbnailHoverOverlayScrim, .ytThumbnailHoverOverlayViewModelScrim, .ytThumbnailHoverViewModelScrim');
                 overlayElements.forEach(o => o.style.display = 'none');
                 link.dataset.blackoutProcessed = 'true';
-                console.log(`[Blackout] Blacked out video: ${videoId}`);
+                console.log(`[Blackout] Blacked out video: ${videoId || 'unknown'}`);
 
                 // Title rewriting for standard renderers
-                const container = link.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-playlist-video-renderer, ytd-compact-video-renderer');
                 if (container) {
                     const titleEl = container.querySelector('#video-title');
                     if (titleEl && !titleEl.dataset.titleProcessed) {
@@ -162,7 +214,9 @@
             if (!vMatch) return;
 
             const videoId = vMatch[1];
-            if (blockedVideoIds.has(videoId)) {
+            const shouldBlock = blockedVideoIds.has(videoId) || isBlockedChannel(lockup);
+
+            if (shouldBlock) {
                 // Blackout thumbnail
                 const thumb = lockup.querySelector('yt-thumbnail-view-model img, .yt-lockup-view-model__content-image');
                 if (thumb) {
@@ -256,8 +310,9 @@
             const vMatch = href.match(/[?&]v=([^&]+)/);
             if (!vMatch) return;
             const videoId = vMatch[1];
+            const shouldBlock = blockedVideoIds.has(videoId) || isBlockedChannel(still);
 
-            if (blockedVideoIds.has(videoId)) {
+            if (shouldBlock) {
                 // Black out the image
                 const image = still.querySelector('img, .ytp-videowall-still-image');
                 if (image) {
@@ -294,8 +349,9 @@
             const vMatch = href.match(/[?&]v=([^&]+)/);
             if (!vMatch) return;
             const videoId = vMatch[1];
+            const shouldBlock = blockedVideoIds.has(videoId) || isBlockedChannel(video);
 
-            if (blockedVideoIds.has(videoId)) {
+            if (shouldBlock) {
                 // Black out only the thumbnail, not the wrapper
                 const thumbnail = video.querySelector('a#thumbnail');
                 if (thumbnail && !thumbnail.dataset.blackoutProcessed) {
@@ -331,7 +387,11 @@
         // 7️⃣  Watch Page Title & Tab Title
         // -------------------------------------------------------------
         const currentVideoIdMatch = window.location.href.match(/[?&]v=([^&]+)/);
-        if (currentVideoIdMatch && blockedVideoIds.has(currentVideoIdMatch[1])) {
+        const watchMetadata = document.querySelector('ytd-watch-metadata');
+        const isBlockedWatchPage = (currentVideoIdMatch && blockedVideoIds.has(currentVideoIdMatch[1])) ||
+                                    (watchMetadata && isBlockedChannel(watchMetadata));
+
+        if (isBlockedWatchPage) {
             // Main Page Title
             const watchTitleEl = document.querySelector('ytd-watch-metadata #title h1 yt-formatted-string, ytd-watch-metadata #title h1');
             if (watchTitleEl && !watchTitleEl.dataset.titleProcessed) {
@@ -355,7 +415,11 @@
     let titleObserver = null;
     function handleTabTitle() {
         const currentVideoIdMatch = window.location.href.match(/[?&]v=([^&]+)/);
-        if (!currentVideoIdMatch || !blockedVideoIds.has(currentVideoIdMatch[1])) {
+        const watchMetadata = document.querySelector('ytd-watch-metadata');
+        const isBlockedWatchPage = (currentVideoIdMatch && blockedVideoIds.has(currentVideoIdMatch[1])) ||
+                                    (watchMetadata && isBlockedChannel(watchMetadata));
+
+        if (!isBlockedWatchPage) {
             if (titleObserver) {
                 titleObserver.disconnect();
                 titleObserver = null;
@@ -404,5 +468,7 @@
     // Re‑run on YouTube SPA navigation events
     window.addEventListener('yt-navigate-finish', () => {
         processThumbnails();
+        // Single retry for late-loading elements
+        setTimeout(processThumbnails, 300);
     });
 })();
