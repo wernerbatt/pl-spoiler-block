@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.7
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -97,22 +97,27 @@
     // Helper: Rewrite title text (removes scores)
     // ---------------------------------------------------------------------
     function getRewrittenTitle(originalTitle) {
-        // Split by pipes to get segments
         const parts = originalTitle.split('|');
+        const candidates = [];
 
-        // Look for the segment containing the score (Team A score Team B)
-        for (let i = 0; i < parts.length; i++) {
-            const part = parts[i].trim();
-            // Match: "Team A 1-2 Team B" format
-            const match = part.match(/^(.+) ([0-9]+-[0-9]+) (.+)$/);
+        for (const part of parts) {
+            const p = part.trim();
+            const match = p.match(/^(.+?) ([0-9]+-[0-9]+) (.+?)$/);
             if (match) {
-                const teamA = match[1].trim();
-                const teamB = match[3].trim();
-                return `${teamA} vs ${teamB}`;
+                candidates.push({ teamA: match[1].trim(), teamB: match[3].trim() });
             }
         }
 
-        return null;
+        if (candidates.length === 0) return null;
+
+        // Prefer the candidate with the shortest combined team names —
+        // the actual score segment (e.g. "Brentford 2-2 Wolves") is more
+        // concise than editorial blurbs that happen to contain numbers.
+        candidates.sort((a, b) =>
+            (a.teamA.length + a.teamB.length) - (b.teamA.length + b.teamB.length)
+        );
+
+        return `${candidates[0].teamA} vs ${candidates[0].teamB}`;
     }
 
     // ---------------------------------------------------------------------
@@ -335,7 +340,51 @@
         });
 
         // -------------------------------------------------------------
-        // 6️⃣  Playlist Panel Videos (Right Side Panel)
+        // 6️⃣  Search Knowledge Panel (Universal Watch Card)
+        // -------------------------------------------------------------
+        const watchCards = document.querySelectorAll('ytd-universal-watch-card-renderer');
+        watchCards.forEach(card => {
+            if (card.dataset.blackoutProcessed) return;
+            if (!isBlockedChannel(card)) return;
+
+            // Hero video thumbnail
+            const heroImg = card.querySelector('ytd-watch-card-hero-video-renderer img, ytd-single-hero-image-renderer img');
+            if (heroImg) {
+                heroImg.style.filter = 'brightness(0)';
+                heroImg.style.backgroundColor = 'black';
+            }
+
+            // Hero video title (the large featured title)
+            const heroTitleEl = card.querySelector('ytd-watch-card-hero-video-renderer yt-formatted-string');
+            if (heroTitleEl) {
+                const newTitle = getRewrittenTitle(heroTitleEl.textContent.trim());
+                if (newTitle) {
+                    heroTitleEl.textContent = newTitle;
+                    console.log(`[Blackout] Rewrote hero title: "${newTitle}"`);
+                }
+            }
+
+            // Compact videos inside the card
+            card.querySelectorAll('ytd-watch-card-compact-video-renderer').forEach(v => {
+                const thumb = v.querySelector('a#thumbnail');
+                if (thumb) {
+                    thumb.style.filter = 'brightness(0)';
+                    thumb.style.backgroundColor = 'black';
+                }
+                const titleEl = v.querySelector('yt-formatted-string.title');
+                if (titleEl) {
+                    const newTitle = getRewrittenTitle(titleEl.textContent.trim());
+                    if (newTitle) {
+                        titleEl.textContent = newTitle;
+                    }
+                }
+            });
+
+            card.dataset.blackoutProcessed = 'true';
+        });
+
+        // -------------------------------------------------------------
+        // 7️⃣  Playlist Panel Videos (Right Side Panel)
         // -------------------------------------------------------------
         const playlistPanelVideos = document.querySelectorAll('ytd-playlist-panel-video-renderer');
         playlistPanelVideos.forEach(video => {
@@ -384,7 +433,7 @@
         });
 
         // -------------------------------------------------------------
-        // 7️⃣  Watch Page Title & Tab Title
+        // 8️⃣  Watch Page Title & Tab Title
         // -------------------------------------------------------------
         const currentVideoIdMatch = window.location.href.match(/[?&]v=([^&]+)/);
         const watchMetadata = document.querySelector('ytd-watch-metadata');
