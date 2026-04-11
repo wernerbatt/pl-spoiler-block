@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.11
+// @version      1.12
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -32,21 +32,16 @@
     function updateBlockedCSS() {
         if (blockedVideoIds.size === 0) return;
         const ids = Array.from(blockedVideoIds);
-        const wallSelectors = ids.flatMap(id => [
-            `.ytp-videowall-still[href*="v=${id}"]`,
-            `.ytp-modern-videowall-still[href*="v=${id}"]`,
-        ]).join(',\n');
-        const titleSelectors = ids.flatMap(id => [
-            `.ytp-videowall-still[href*="v=${id}"] .ytp-videowall-still-info-title`,
-            `.ytp-modern-videowall-still[href*="v=${id}"] .ytp-videowall-still-info-title`,
+        // Only black out the thumbnail image, not the whole card —
+        // the title text is rewritten separately by processThumbnails.
+        const imageSelectors = ids.flatMap(id => [
+            `.ytp-videowall-still[href*="v=${id}"] .ytp-videowall-still-image`,
+            `.ytp-modern-videowall-still[href*="v=${id}"] .ytp-videowall-still-image`,
         ]).join(',\n');
         blackoutStyle.textContent = `
-${wallSelectors} {
+${imageSelectors} {
     filter: brightness(0) !important;
     background-color: black !important;
-}
-${titleSelectors} {
-    visibility: hidden !important;
 }`;
         console.log(`[Blackout] Injected CSS for ${ids.length} video IDs`);
     }
