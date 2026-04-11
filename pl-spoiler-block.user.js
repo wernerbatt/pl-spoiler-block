@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.9
+// @version      1.10
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -542,5 +542,26 @@
     window.addEventListener('yt-navigate-finish', () => {
         processThumbnails();
         setTimeout(processThumbnails, 300);
+        // Attach ended listener each time we navigate to a watch page
+        attachVideoEndedListener();
     });
+
+    // Fire processThumbnails rapidly when the video ends so the videowall
+    // is blacked out before the user can see it.
+    function attachVideoEndedListener() {
+        const video = document.querySelector('video.html5-main-video');
+        if (!video || video.dataset.blackoutEndedListened) return;
+        video.dataset.blackoutEndedListened = 'true';
+        video.addEventListener('ended', () => {
+            processThumbnails();
+            setTimeout(processThumbnails, 100);
+            setTimeout(processThumbnails, 300);
+            setTimeout(processThumbnails, 600);
+        });
+    }
+
+    // Also try attaching on initial load (direct watch page visits)
+    attachVideoEndedListener();
+    // Retry after a short delay in case the video element isn't ready yet
+    setTimeout(attachVideoEndedListener, 2000);
 })();
