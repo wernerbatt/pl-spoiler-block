@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.12
+// @version      1.13
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -28,6 +28,32 @@
     // ---------------------------------------------------------------------
     const blackoutStyle = document.createElement('style');
     document.head.appendChild(blackoutStyle);
+
+    // Cache video IDs in localStorage so CSS can be injected immediately
+    // on the next page load without waiting for the playlist fetch.
+    const CACHE_KEY = 'blackout_ids_v1';
+    const CACHE_MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+    function loadFromCache() {
+        try {
+            const raw = localStorage.getItem(CACHE_KEY);
+            if (!raw) return;
+            const { ids, ts } = JSON.parse(raw);
+            if (Date.now() - ts > CACHE_MAX_AGE_MS) return;
+            ids.forEach(id => blockedVideoIds.add(id));
+            updateBlockedCSS();
+            console.log(`[Blackout] Loaded ${ids.length} IDs from cache — CSS injected instantly`);
+        } catch (e) { /* ignore corrupt cache */ }
+    }
+
+    function saveToCache() {
+        try {
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+                ids: Array.from(blockedVideoIds),
+                ts: Date.now(),
+            }));
+        } catch (e) { /* ignore quota errors */ }
+    }
 
     function updateBlockedCSS() {
         if (blockedVideoIds.size === 0) return;
@@ -78,9 +104,9 @@ ${imageSelectors} {
             }
             console.log(`[Blackout] Loaded ${blockedVideoIds.size} unique video IDs to block.`);
 
-            // Inject CSS immediately so videowall cards are blacked out
-            // the instant YouTube renders them — no script-timing delay.
+            // Inject CSS and persist for instant load next time.
             updateBlockedCSS();
+            saveToCache();
 
             // Process immediately to catch any elements already on the page
             processThumbnails();
@@ -565,7 +591,10 @@ ${imageSelectors} {
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // Initial data fetch
+    // Load cached IDs immediately so CSS fires before the playlist fetch completes.
+    loadFromCache();
+
+    // Initial data fetch (refreshes cache in the background)
     fetchBlockedVideos();
 
     // Re‑run on YouTube SPA navigation events
