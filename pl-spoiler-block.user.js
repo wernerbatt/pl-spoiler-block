@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.8
+// @version      1.9
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -65,8 +65,14 @@
     }
 
     // ---------------------------------------------------------------------
-    // Apply blackout styling and title rewriting to thumbnails.
+    // Helper: Check if a title looks like a PL match highlights video
+    // (catches highlights from any channel, not just the blocked one)
     // ---------------------------------------------------------------------
+    function isPLHighlight(title) {
+        if (!title) return false;
+        return /premier league/i.test(title) && /\b\d+-\d+\b/.test(title);
+    }
+
     // ---------------------------------------------------------------------
     // Helper: Check if element belongs to blocked channel
     // ---------------------------------------------------------------------
@@ -148,9 +154,6 @@
 
             if (!isThumbnail) return;
 
-            // -------------------------------------------------------------
-            // 1️⃣  Standard Video Links (Home, Search, Playlist)
-            // -------------------------------------------------------------
             let videoId = null;
             const vMatch = href.match(/[?&]v=([^&]+)/);
             if (vMatch) {
@@ -160,9 +163,13 @@
                 if (shortsMatch) videoId = shortsMatch[1];
             }
 
-            // Check if this video should be blocked (by ID or by channel)
             const container = link.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-playlist-video-renderer, ytd-compact-video-renderer');
-            const shouldBlock = (videoId && blockedVideoIds.has(videoId)) || (container && isBlockedChannel(container));
+            const titleEl = container ? container.querySelector('#video-title') : null;
+            const titleText = titleEl ? titleEl.textContent.trim() : '';
+
+            const shouldBlock = (videoId && blockedVideoIds.has(videoId)) ||
+                                (container && isBlockedChannel(container)) ||
+                                isPLHighlight(titleText);
 
             if (shouldBlock) {
                 // Blackout the thumbnail container
@@ -175,15 +182,12 @@
                 console.log(`[Blackout] Blacked out video: ${videoId || 'unknown'}`);
 
                 // Title rewriting for standard renderers
-                if (container) {
-                    const titleEl = container.querySelector('#video-title');
-                    if (titleEl && !titleEl.dataset.titleProcessed) {
-                        const newTitle = getRewrittenTitle(titleEl.textContent.trim());
-                        if (newTitle) {
-                            titleEl.textContent = newTitle;
-                            titleEl.title = newTitle;
-                            titleEl.dataset.titleProcessed = 'true';
-                        }
+                if (titleEl && !titleEl.dataset.titleProcessed) {
+                    const newTitle = getRewrittenTitle(titleEl.textContent.trim());
+                    if (newTitle) {
+                        titleEl.textContent = newTitle;
+                        titleEl.title = newTitle;
+                        titleEl.dataset.titleProcessed = 'true';
                     }
                 }
                 return;
@@ -192,7 +196,6 @@
             // Playlist thumbnail handling
             const listMatch = href.match(/[?&]list=([^&]+)/);
             if (listMatch && listMatch[1] === PLAYLIST_ID) {
-                // Double check it's a thumbnail (redundant but safe)
                 if (isThumbnail) {
                     link.style.filter = 'brightness(0)';
                     link.style.backgroundColor = 'black';
@@ -210,7 +213,6 @@
         lockups.forEach(lockup => {
             if (lockup.dataset.blackoutProcessed) return;
 
-            // Check if this lockup links to a blocked video
             const link = lockup.querySelector('a[href*="/watch?v="]');
             if (!link) return;
 
@@ -219,7 +221,12 @@
             if (!vMatch) return;
 
             const videoId = vMatch[1];
-            const shouldBlock = blockedVideoIds.has(videoId) || isBlockedChannel(lockup);
+            const titleEl = lockup.querySelector('.yt-lockup-metadata-view-model__title span, h3 a');
+            const titleText = titleEl ? titleEl.textContent.trim() : '';
+
+            const shouldBlock = blockedVideoIds.has(videoId) ||
+                                isBlockedChannel(lockup) ||
+                                isPLHighlight(titleText);
 
             if (shouldBlock) {
                 // Blackout thumbnail
@@ -230,12 +237,10 @@
                 }
 
                 // Rewrite Title
-                const titleEl = lockup.querySelector('.yt-lockup-metadata-view-model__title span, h3 a');
                 if (titleEl) {
                     const newTitle = getRewrittenTitle(titleEl.textContent.trim());
                     if (newTitle) {
                         titleEl.textContent = newTitle;
-                        // Also update the link title attribute if present
                         const titleLink = lockup.querySelector('a.yt-lockup-metadata-view-model__title');
                         if (titleLink) titleLink.title = newTitle;
                     }
@@ -276,12 +281,10 @@
             const href = link.getAttribute('href');
             let shouldBlackout = false;
 
-            // Check if it's a playlist card
             if (href && href.includes(PLAYLIST_ID)) {
                 shouldBlackout = true;
             }
 
-            // Check if it's a video card with a blocked video ID
             if (!shouldBlackout && href) {
                 const vMatch = href.match(/[?&]v=([^&]+)/);
                 if (vMatch && blockedVideoIds.has(vMatch[1])) {
@@ -289,8 +292,14 @@
                 }
             }
 
+            if (!shouldBlackout) {
+                const titleEl = card.querySelector('.ytp-ce-video-title, .ytp-ce-playlist-title');
+                if (titleEl && isPLHighlight(titleEl.textContent.trim())) {
+                    shouldBlackout = true;
+                }
+            }
+
             if (shouldBlackout) {
-                // Black out the covering image (thumbnail)
                 const coveringImage = card.querySelector('.ytp-ce-covering-image');
                 if (coveringImage) {
                     coveringImage.style.filter = 'brightness(0)';
@@ -311,22 +320,24 @@
             const href = still.getAttribute('href');
             if (!href) return;
 
-            // Extract video ID
             const vMatch = href.match(/[?&]v=([^&]+)/);
             if (!vMatch) return;
             const videoId = vMatch[1];
-            const shouldBlock = blockedVideoIds.has(videoId) || isBlockedChannel(still);
+
+            const titleEl = still.querySelector('.ytp-videowall-still-info-title');
+            const titleText = titleEl ? titleEl.textContent.trim() : '';
+
+            const shouldBlock = blockedVideoIds.has(videoId) ||
+                                isBlockedChannel(still) ||
+                                isPLHighlight(titleText);
 
             if (shouldBlock) {
-                // Black out the image
                 const image = still.querySelector('img, .ytp-videowall-still-image');
                 if (image) {
                     image.style.filter = 'brightness(0)';
                     image.style.backgroundColor = 'black';
                 }
 
-                // Rewrite the title
-                const titleEl = still.querySelector('.ytp-videowall-still-info-title');
                 if (titleEl) {
                     const newTitle = getRewrittenTitle(titleEl.textContent.trim());
                     if (newTitle) {
@@ -346,7 +357,6 @@
         watchCards.forEach(card => {
             if (card.dataset.blackoutProcessed) return;
 
-            // Check if any video in this card is blocked
             const cardLinks = card.querySelectorAll('a[href*="watch"]');
             let hasBlockedVideo = false;
             for (const link of cardLinks) {
@@ -357,17 +367,18 @@
                     break;
                 }
             }
-            if (!hasBlockedVideo && !isBlockedChannel(card)) return;
 
-            // Hero video thumbnail
+            const heroTitleEl = card.querySelector('ytd-watch-card-hero-video-renderer yt-formatted-string');
+            const heroTitleText = heroTitleEl ? heroTitleEl.textContent.trim() : '';
+
+            if (!hasBlockedVideo && !isBlockedChannel(card) && !isPLHighlight(heroTitleText)) return;
+
             const heroImg = card.querySelector('ytd-watch-card-hero-video-renderer img, ytd-single-hero-image-renderer img');
             if (heroImg) {
                 heroImg.style.filter = 'brightness(0)';
                 heroImg.style.backgroundColor = 'black';
             }
 
-            // Hero video title (the large featured title)
-            const heroTitleEl = card.querySelector('ytd-watch-card-hero-video-renderer yt-formatted-string');
             if (heroTitleEl) {
                 const newTitle = getRewrittenTitle(heroTitleEl.textContent.trim());
                 if (newTitle) {
@@ -376,7 +387,6 @@
                 }
             }
 
-            // Compact videos inside the card
             card.querySelectorAll('ytd-watch-card-compact-video-renderer').forEach(v => {
                 const thumb = v.querySelector('a#thumbnail');
                 if (thumb) {
@@ -406,14 +416,18 @@
             const href = wcEndpoint.getAttribute('href');
             if (!href || !href.includes(PLAYLIST_ID)) return;
 
-            // Extract video ID
             const vMatch = href.match(/[?&]v=([^&]+)/);
             if (!vMatch) return;
             const videoId = vMatch[1];
-            const shouldBlock = blockedVideoIds.has(videoId) || isBlockedChannel(video);
+
+            const titleEl = video.querySelector('#video-title');
+            const titleText = titleEl ? titleEl.textContent.trim() : '';
+
+            const shouldBlock = blockedVideoIds.has(videoId) ||
+                                isBlockedChannel(video) ||
+                                isPLHighlight(titleText);
 
             if (shouldBlock) {
-                // Black out only the thumbnail, not the wrapper
                 const thumbnail = video.querySelector('a#thumbnail');
                 if (thumbnail && !thumbnail.dataset.blackoutProcessed) {
                     thumbnail.style.filter = 'brightness(0)';
@@ -421,8 +435,6 @@
                     thumbnail.dataset.blackoutProcessed = 'true';
                 }
 
-                // Rewrite the title
-                const titleEl = video.querySelector('#video-title');
                 if (titleEl && !titleEl.dataset.titleProcessed) {
                     const newTitle = getRewrittenTitle(titleEl.textContent.trim());
                     if (newTitle) {
@@ -449,12 +461,14 @@
         // -------------------------------------------------------------
         const currentVideoIdMatch = window.location.href.match(/[?&]v=([^&]+)/);
         const watchMetadata = document.querySelector('ytd-watch-metadata');
+        const watchTitleEl = document.querySelector('ytd-watch-metadata #title h1 yt-formatted-string, ytd-watch-metadata #title h1');
+        const watchTitleText = watchTitleEl ? watchTitleEl.textContent.trim() : '';
+
         const isBlockedWatchPage = (currentVideoIdMatch && blockedVideoIds.has(currentVideoIdMatch[1])) ||
-                                    (watchMetadata && isBlockedChannel(watchMetadata));
+                                    (watchMetadata && isBlockedChannel(watchMetadata)) ||
+                                    isPLHighlight(watchTitleText);
 
         if (isBlockedWatchPage) {
-            // Main Page Title
-            const watchTitleEl = document.querySelector('ytd-watch-metadata #title h1 yt-formatted-string, ytd-watch-metadata #title h1');
             if (watchTitleEl && !watchTitleEl.dataset.titleProcessed) {
                 const newTitle = getRewrittenTitle(watchTitleEl.textContent.trim());
                 if (newTitle) {
@@ -465,7 +479,6 @@
                 }
             }
 
-            // Browser Tab Title - Enforce via check
             handleTabTitle();
         }
     }
@@ -477,8 +490,12 @@
     function handleTabTitle() {
         const currentVideoIdMatch = window.location.href.match(/[?&]v=([^&]+)/);
         const watchMetadata = document.querySelector('ytd-watch-metadata');
+        const watchTitleEl = document.querySelector('ytd-watch-metadata #title h1 yt-formatted-string, ytd-watch-metadata #title h1');
+        const watchTitleText = watchTitleEl ? watchTitleEl.textContent.trim() : '';
+
         const isBlockedWatchPage = (currentVideoIdMatch && blockedVideoIds.has(currentVideoIdMatch[1])) ||
-                                    (watchMetadata && isBlockedChannel(watchMetadata));
+                                    (watchMetadata && isBlockedChannel(watchMetadata)) ||
+                                    isPLHighlight(watchTitleText);
 
         if (!isBlockedWatchPage) {
             if (titleObserver) {
@@ -490,8 +507,6 @@
 
         const updateTitle = () => {
             const currentTitle = document.title;
-            // Check if title needs rewriting (contains pipe format with score)
-            // We check for the pattern even if it has a prefix like "(1)"
             if (currentTitle.match(/\|\s*.*?\s+\d+-\d+\s+.*?\s+\|/)) {
                 const newTitle = getRewrittenTitle(currentTitle);
                 if (newTitle && !currentTitle.startsWith(newTitle)) {
@@ -501,10 +516,8 @@
             }
         };
 
-        // Run immediately
         updateTitle();
 
-        // Setup observer if not already running
         if (!titleObserver) {
             const titleElement = document.querySelector('title');
             if (titleElement) {
@@ -517,7 +530,6 @@
     }
 
     // Observe DOM changes to handle infinite scroll and SPA navigation.
-    // ---------------------------------------------------------------------
     const observer = new MutationObserver(() => {
         processThumbnails();
     });
@@ -529,7 +541,6 @@
     // Re‑run on YouTube SPA navigation events
     window.addEventListener('yt-navigate-finish', () => {
         processThumbnails();
-        // Single retry for late-loading elements
         setTimeout(processThumbnails, 300);
     });
 })();
