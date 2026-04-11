@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.10
+// @version      1.11
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -19,6 +19,37 @@
     let blockedChannelId = null;
     let blockedChannelHandle = null;
     let isFetching = false;
+
+    // ---------------------------------------------------------------------
+    // CSS injection: black out videowall cards instantly as YouTube renders
+    // them, before any script callback has a chance to run.
+    // We key rules on [href*="v=ID"] so they apply the moment the element
+    // is inserted into the DOM — no MutationObserver delay.
+    // ---------------------------------------------------------------------
+    const blackoutStyle = document.createElement('style');
+    document.head.appendChild(blackoutStyle);
+
+    function updateBlockedCSS() {
+        if (blockedVideoIds.size === 0) return;
+        const ids = Array.from(blockedVideoIds);
+        const wallSelectors = ids.flatMap(id => [
+            `.ytp-videowall-still[href*="v=${id}"]`,
+            `.ytp-modern-videowall-still[href*="v=${id}"]`,
+        ]).join(',\n');
+        const titleSelectors = ids.flatMap(id => [
+            `.ytp-videowall-still[href*="v=${id}"] .ytp-videowall-still-info-title`,
+            `.ytp-modern-videowall-still[href*="v=${id}"] .ytp-videowall-still-info-title`,
+        ]).join(',\n');
+        blackoutStyle.textContent = `
+${wallSelectors} {
+    filter: brightness(0) !important;
+    background-color: black !important;
+}
+${titleSelectors} {
+    visibility: hidden !important;
+}`;
+        console.log(`[Blackout] Injected CSS for ${ids.length} video IDs`);
+    }
 
     // ---------------------------------------------------------------------
     // Fetch the playlist page and extract all video IDs that belong to it.
@@ -51,6 +82,10 @@
                 blockedVideoIds.add(match[1]);
             }
             console.log(`[Blackout] Loaded ${blockedVideoIds.size} unique video IDs to block.`);
+
+            // Inject CSS immediately so videowall cards are blacked out
+            // the instant YouTube renders them — no script-timing delay.
+            updateBlockedCSS();
 
             // Process immediately to catch any elements already on the page
             processThumbnails();
