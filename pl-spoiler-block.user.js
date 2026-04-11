@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.13
+// @version      1.14
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -62,7 +62,7 @@
         // the title text is rewritten separately by processThumbnails.
         const imageSelectors = ids.flatMap(id => [
             `.ytp-videowall-still[href*="v=${id}"] .ytp-videowall-still-image`,
-            `.ytp-modern-videowall-still[href*="v=${id}"] .ytp-videowall-still-image`,
+            `.ytp-modern-videowall-still[href*="v=${id}"] .ytp-modern-videowall-still-image`,
         ]).join(',\n');
         blackoutStyle.textContent = `
 ${imageSelectors} {
@@ -388,7 +388,7 @@ ${imageSelectors} {
                                 isPLHighlight(titleText);
 
             if (shouldBlock) {
-                const image = still.querySelector('img, .ytp-videowall-still-image');
+                const image = still.querySelector('img, .ytp-videowall-still-image, .ytp-modern-videowall-still-image');
                 if (image) {
                     image.style.filter = 'brightness(0)';
                     image.style.backgroundColor = 'black';
