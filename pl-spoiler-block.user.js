@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.14
+// @version      1.15
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -267,8 +267,6 @@ ${imageSelectors} {
         // -------------------------------------------------------------
         const lockups = document.querySelectorAll('yt-lockup-view-model');
         lockups.forEach(lockup => {
-            if (lockup.dataset.blackoutProcessed) return;
-
             const link = lockup.querySelector('a[href*="/watch?v="]');
             if (!link) return;
 
@@ -277,7 +275,8 @@ ${imageSelectors} {
             if (!vMatch) return;
 
             const videoId = vMatch[1];
-            const titleEl = lockup.querySelector('.yt-lockup-metadata-view-model__title span, h3 a');
+            // h3 a is the rendered title link in the current YouTube lockup DOM
+            const titleEl = lockup.querySelector('h3 a, .yt-lockup-metadata-view-model__title span');
             const titleText = titleEl ? titleEl.textContent.trim() : '';
 
             const shouldBlock = blockedVideoIds.has(videoId) ||
@@ -285,25 +284,25 @@ ${imageSelectors} {
                                 isPLHighlight(titleText);
 
             if (shouldBlock) {
-                // Blackout thumbnail
-                const thumb = lockup.querySelector('yt-thumbnail-view-model img, .yt-lockup-view-model__content-image');
-                if (thumb) {
-                    thumb.style.filter = 'brightness(0)';
-                    thumb.style.backgroundColor = 'black';
+                // Blackout thumbnail (only once)
+                if (!lockup.dataset.blackoutProcessed) {
+                    const thumb = lockup.querySelector('yt-thumbnail-view-model img, .yt-lockup-view-model__content-image');
+                    if (thumb) {
+                        thumb.style.filter = 'brightness(0)';
+                        thumb.style.backgroundColor = 'black';
+                    }
+                    lockup.dataset.blackoutProcessed = 'true';
+                    console.log(`[Blackout] Processed suggested video: ${videoId}`);
                 }
 
-                // Rewrite Title
-                if (titleEl) {
+                // Always rewrite title — YouTube may re-render it after first pass
+                if (titleEl && !titleEl.dataset.titleProcessed) {
                     const newTitle = getRewrittenTitle(titleEl.textContent.trim());
                     if (newTitle) {
                         titleEl.textContent = newTitle;
-                        const titleLink = lockup.querySelector('a.yt-lockup-metadata-view-model__title');
-                        if (titleLink) titleLink.title = newTitle;
+                        titleEl.dataset.titleProcessed = 'true';
                     }
                 }
-
-                lockup.dataset.blackoutProcessed = 'true';
-                console.log(`[Blackout] Processed suggested video: ${videoId}`);
             }
         });
 
@@ -380,7 +379,7 @@ ${imageSelectors} {
             if (!vMatch) return;
             const videoId = vMatch[1];
 
-            const titleEl = still.querySelector('.ytp-videowall-still-info-title');
+            const titleEl = still.querySelector('.ytp-videowall-still-info-title, .ytp-modern-videowall-still-info-title');
             const titleText = titleEl ? titleEl.textContent.trim() : '';
 
             const shouldBlock = blockedVideoIds.has(videoId) ||
