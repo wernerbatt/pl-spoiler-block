@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.21
+// @version      1.22
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -382,6 +382,20 @@ ${imageSelectors} {
             if (!shouldBlackout) {
                 const titleEl = card.querySelector('.ytp-ce-video-title, .ytp-ce-playlist-title');
                 if (titleEl && isPLHighlight(titleEl.textContent.trim())) {
+                    shouldBlackout = true;
+                }
+            }
+
+            // Playlist teaser cards (.ytp-ce-playlist) show the playlist name,
+            // not a per-video title, so they never match isPLHighlight above —
+            // fall back to: is the video currently playing itself blocked?
+            // These cards only ever surface "more from this playlist", so
+            // that's a safe signal even without a channel link inside the card.
+            if (!shouldBlackout) {
+                const currentVideoIdMatch = window.location.href.match(/[?&]v=([^&]+)/);
+                const watchMetadata = document.querySelector('ytd-watch-metadata');
+                if ((currentVideoIdMatch && blockedVideoIds.has(currentVideoIdMatch[1])) ||
+                    (watchMetadata && isBlockedChannel(watchMetadata))) {
                     shouldBlackout = true;
                 }
             }
