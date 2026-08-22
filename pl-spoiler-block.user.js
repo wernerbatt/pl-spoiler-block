@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.19
+// @version      1.20
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -38,11 +38,16 @@
         try {
             const raw = localStorage.getItem(CACHE_KEY);
             if (!raw) return;
-            const { ids, ts } = JSON.parse(raw);
+            const { ids, channelId, channelHandle, ts } = JSON.parse(raw);
             if (Date.now() - ts > CACHE_MAX_AGE_MS) return;
             ids.forEach(id => blockedVideoIds.add(id));
+            if (channelId) blockedChannelId = channelId;
+            if (channelHandle) blockedChannelHandle = channelHandle;
             updateBlockedCSS();
-            console.log(`[Blackout] Loaded ${ids.length} IDs from cache — CSS injected instantly`);
+            console.log(`[Blackout] Loaded ${ids.length} IDs + channel info from cache — CSS injected instantly`);
+            // Channel info lets isBlockedChannel() match immediately (e.g. the
+            // playlist header) instead of waiting for fetchBlockedVideos().
+            if (blockedChannelId || blockedChannelHandle) processThumbnails();
         } catch (e) { /* ignore corrupt cache */ }
     }
 
@@ -50,6 +55,8 @@
         try {
             localStorage.setItem(CACHE_KEY, JSON.stringify({
                 ids: Array.from(blockedVideoIds),
+                channelId: blockedChannelId,
+                channelHandle: blockedChannelHandle,
                 ts: Date.now(),
             }));
         } catch (e) { /* ignore quota errors */ }
@@ -66,6 +73,11 @@
             `.ytp-modern-videowall-still[href*="v=${id}"] .ytp-modern-videowall-still-image`,
             // Sidebar lockup thumbnails
             `yt-lockup-view-model a[href*="v=${id}"] img`,
+            // Playlist header hero image — it's the first video's thumbnail,
+            // rendered as an <img src="…/vi/ID/…"> with no href to key on.
+            `yt-page-header-renderer img[src*="/vi/${id}/"]`,
+            `yt-content-preview-image-view-model img[src*="/vi/${id}/"]`,
+            `ytd-playlist-header-renderer img[src*="/vi/${id}/"]`,
         ]).join(',\n');
         blackoutStyle.textContent = `
 ${imageSelectors} {
