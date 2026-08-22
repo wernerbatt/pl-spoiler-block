@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Playlist Blackout
 // @namespace    http://tampermonkey.net/
-// @version      1.18
+// @version      1.19
 // @description  Blacks out thumbnails of videos from a specific playlist everywhere on YouTube and hides spoiler information.
 // @author       Antigravity
 // @match        https://www.youtube.com/*
@@ -93,7 +93,17 @@ ${imageSelectors} {
                 console.log(`[Blackout] Found channel ID: ${blockedChannelId}`);
             }
 
-            const channelHandleMatch = text.match(/"ownerBadges"[\s\S]*?"canonicalBaseUrl":"\/(@[^"]+)"/);
+            // Look for the canonicalBaseUrl tied to the browseId we just found —
+            // YouTube no longer always emits "ownerBadges" near it, so anchor
+            // on the channel ID instead. Falls back to the first @handle on
+            // the page (old behavior) if that targeted match comes up empty.
+            let channelHandleMatch = null;
+            if (blockedChannelId) {
+                channelHandleMatch = text.match(new RegExp(`"browseId":"${blockedChannelId}","canonicalBaseUrl":"\\/(@[^"]+)"`));
+            }
+            if (!channelHandleMatch) {
+                channelHandleMatch = text.match(/"canonicalBaseUrl":"\/(@[^"]+)"/);
+            }
             if (channelHandleMatch) {
                 blockedChannelHandle = channelHandleMatch[1];
                 console.log(`[Blackout] Found channel handle: ${blockedChannelHandle}`);
